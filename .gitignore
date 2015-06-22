@@ -1,0 +1,5 @@
+*.pyc
+.*swp
+test/output/*
+!test/output/PLACEHOLDER
+.idea/*

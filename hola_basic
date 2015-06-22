@@ -1,0 +1,16 @@
+#!/usr/bin/python
+
+import sys
+
+from main.hola import hola
+import main.gmlparse as gmlparse
+
+def main():
+    gml_in = sys.stdin.read()
+    G = gmlparse.buildGraph(gml_in)
+    hola(G)
+    gml_out = G.writeGML()
+    sys.stdout.write(gml_out)
+
+if __name__ == "__main__":
+    main()
