@@ -2,8 +2,8 @@
 
 import sys
 
-from main.hola import hola
-import main.gmlparse as gmlparse
+from hola.hola import hola
+import hola.gmlparse as gmlparse
 
 def main():
     gml_in = sys.stdin.read()
