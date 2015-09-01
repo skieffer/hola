@@ -8,8 +8,10 @@ developed by [Steve Kieffer][sk], [Tim Dwyer][td], [Kim Marriott][km], and
 [Monash University][monash] in Melbourne, Australia.
 The Python library was written by Steve Kieffer.
 
-In order to use this library you also need [Adaptagrams][adaptagrams], and
-[SWIG][swig].
+In order to use this library you need
+[SWIG][swig], as well as
+[Adapaca][adapaca], which is an experimental fork of the
+[Adaptagrams][adaptagrams] layout library.
 
 Currently the HOLA library provides read/write support only for the GML
 file format. It comes bundled with [SPARK][spark], which it uses to parse GML.
@@ -24,7 +26,7 @@ to do something similar.
  1. Clone the HOLA repository into a directory of your choice,
     `HOLADIR`.
 
- 2. Clone [Adaptagrams][adaptagrams] into a directory of your choice,
+ 2. Clone [Adapaca][adapaca] into a directory of your choice,
     `ADAPDIR`.
 
  3. Follow the instructions at the [Adaptagrams repository page][adaptagrams]
@@ -67,6 +69,7 @@ modules of the library.
 
 
 [adaptagrams]: https://github.com/mjwybrow/adaptagrams/
+[adapaca]: https://github.com/skieffer/adapaca
 [marvl]: http://marvl.infotech.monash.edu.au/
 [monash]: http://www.infotech.monash.edu.au/about/schools/caulfield/
 [td]: http://marvl.infotech.monash.edu/~dwyer/
