@@ -3,3 +3,5 @@
 test/output/*
 !test/output/PLACEHOLDER
 .idea/*
+adaptagrams
+
