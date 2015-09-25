@@ -688,7 +688,7 @@ class Graph:
         eLengths = adg.Doubles()
         for e in es:
             eLengths.push_back(1.0)
-        alg = adg.simpleCMLFactory(rs, es, iel, useNeighbourStress)
+        alg = adg.simpleCMLFactory(rs, es, None, iel, useNeighbourStress)
 
         if op:
             alg.setAvoidOverlaps(True)
