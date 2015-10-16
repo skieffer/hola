@@ -53,6 +53,8 @@ def buildMenu():
     return (menutext, menudict)
 
 def main():
+    sg = raw_input('Output intermediate stage graphs? (y/n) ')
+    output_stage_graphs = (sg == 'y')
     menutext, menudict = buildMenu()
     while True:
         print menutext
@@ -68,7 +70,10 @@ def main():
         name = menudict[n]
         config = HolaConfig()
         config.useFastSettings(True)
-        config.LOG_LEVEL_GENERAL = LogLevel.TIMING
+        if output_stage_graphs:
+            config.LOG_LEVEL_GENERAL = LogLevel.STAGE_GRAPHS
+        else:
+            config.LOG_LEVEL_GENERAL = LogLevel.TIMING
         config.LOG_LEVEL_TREE_PLACEMENT = LogLevel.TIMING
         basic_tools.doHOLA(name, config=config)
         print '%' * 80
