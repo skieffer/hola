@@ -17,6 +17,18 @@ Currently the HOLA library provides read/write support only for the GML
 file format. It comes bundled with [SPARK][spark], which it uses to parse GML.
 
 
+How to cite?
+------------
+
+If you refer to HOLA in your own research or publications, please cite 
+the following reference:
+
+ *  Steve Kieffer, Tim Dwyer, Kim Marriott, and Michael Wybrow.  
+    HOLA: Human-like Orthogonal Network Layout.
+    In Visualization and Computer Graphics, IEEE Transactions on,
+    Volume 22, Issue 1, pages 349 - 358. IEEE, 2016. [DOI][doi]
+
+
 Installing
 ----------
 
@@ -78,4 +90,5 @@ modules of the library.
 [sk]: http://skieffer.info
 [spark]: http://pages.cpsc.ucalgary.ca/~aycock/spark/
 [swig]: http://www.swig.org/
+[doi]:http://dx.doi.org/10.1109/TVCG.2015.2467451
 
