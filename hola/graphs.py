@@ -921,7 +921,7 @@ class Graph:
             cpp += ' * Mapping of Node IDs to Variable IDs:\n'
             for ID in sorted(H.nodes.keys()):
                 node = H.nodes[ID]
-                cpp += ' * Node %d: Variable %d\n' % (ID, ix(node))
+                cpp += ' * Node %d: Variable %d\n' % (ID, ix(node.ID))
             cpp += '*/\n'
             with open('testOut/project/%s_solidEdges.gml' % debugFilename, 'w') as gmlFile:
                 gmlFile.write(H.writeGML())

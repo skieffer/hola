@@ -324,7 +324,7 @@ class AlignCo:
             adg.YDIM: 'YDIM'
         }[self.dim])
         for u, off in self.shapeOffsetPairs:
-            i = u.ID if ix is None else ix(u)
+            i = u.ID if ix is None else ix(u.ID)
             s += '%s->addShape(%d, %.2f);\n'%(
                 name, i, off
             )
