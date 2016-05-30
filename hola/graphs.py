@@ -923,6 +923,10 @@ class Graph:
                 node = H.nodes[ID]
                 cpp += ' * Node %d: Variable %d\n' % (ID, ix(node.ID))
             cpp += '*/\n'
+            cpp += '#include "libcola/aca3.h"\n'
+            cpp += 'using namespace cola;\n'
+            cpp += 'using namespace vpsc;\n'
+            cpp += 'int main(void) {\n'
             with open('testOut/project/%s_solidEdges.gml' % debugFilename, 'w') as gmlFile:
                 gmlFile.write(H.writeGML())
         n = rs.size()
@@ -960,6 +964,7 @@ class Graph:
             )
             cpp += 'std::cout << result.errorLevel << std::endl;\n'
             cpp += 'std::cout << result.unsatinfo << std::endl;\n'
+            cpp += '} // end main\n'
             with open('testOut/project/%s.cpp' % debugFilename,'w') as cppFile:
                 cppFile.write(cpp)
         if logger.level >= LogLevel.TIMING:
