@@ -410,12 +410,16 @@ class Tree:
                 # Dimensions of tree box swap.
                 w, h = h, w
                 # If root node is oblong, then tree box needs to be shifted
-                # in the growth dimension.
-                if growthDir in Compass.horizontal:
+                # in the growth direction.
+                if growthDir == Compass.EAST:
                     u += (self.root.w - self.root.h) / 2.0
-                else:
-                    assert growthDir in Compass.vertical
+                elif growthDir == Compass.WEST:
+                    u -= (self.root.w - self.root.h) / 2.0
+                elif growthDir == Compass.SOUTH:
                     v += (self.root.h - self.root.w) / 2.0
+                else:
+                    assert growthDir == Compass.NORTH
+                    v -= (self.root.h - self.root.w) / 2.0
             # ULC is easily recomputed based on new centre.
             x, y = u - w/2.0, v - h/2.0
         return (x, y, w, h, u, v)
