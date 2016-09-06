@@ -55,7 +55,7 @@ to do something similar.
 
         $ cd ADAPDIR/cola
         $ touch __init__.py
-        $ cd HOLADIR/main
+        $ cd HOLADIR
         $ ln -s ADAPDIR/cola adaptagrams
 
 
