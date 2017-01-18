@@ -13,6 +13,7 @@ orthowontist
 sbgn
 metro
 random
+special
 """.split()
 
 def stitchCols(c1, c2, width=54, gutter=5):
