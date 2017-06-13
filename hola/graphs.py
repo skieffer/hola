@@ -2024,12 +2024,20 @@ class Node:
     def initFromGML(self, d):
         self.ID = d['id']
         self.label = d.get('label','')
-        g = d['graphics']
-        self.x = g['x']
-        self.y = g['y']
-        self.w = g['w']
-        self.h = g['h']
-        self.shape = g['type']
+        g = d.get('graphics')
+        if g is None:
+            g = {
+                'x': 200*random.random()-100,
+                'y': 200*random.random()-100,
+                'w': 10,
+                'h': 10,
+                'type': 'rectangle'
+            }
+        self.x = g.get('x', 200*random.random()-100)
+        self.y = g.get('y', 200*random.random()-100)
+        self.w = g.get('w', 10)
+        self.h = g.get('h', 10)
+        self.shape = g.get('type', 'rectangle')
         self.fill = g.get('fill', '#FFCC00')
         self.stroke = g.get('outline', '#000000')
 
@@ -2160,8 +2168,8 @@ class Edge:
         self.srcID = d['source']
         self.tgtID = d['target']
         # Check for route points.
-        g = d['graphics']
-        if g.has_key('Line'):
+        g = d.get('graphics')
+        if g is not None and g.has_key('Line'):
             pts = g['Line']['Line']
             pts = [[p['x'], p['y']] for p in pts]
             self.route = pts
