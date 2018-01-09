@@ -4,4 +4,5 @@ test/output/*
 !test/output/PLACEHOLDER
 .idea/*
 adaptagrams
+.DS_Store
 

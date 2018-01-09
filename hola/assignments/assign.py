@@ -337,7 +337,7 @@ class Arrangement:
 
     def getAssignmentForQuadAction(self, qa):
         """
-        qa: a "quad action," i.e. a list [w,x,y,z], whose entires
+        qa: a "quad action," i.e. a list [w,x,y,z], whose entries
             are integers 0, 1, 2, or 3, representing the quadrant
             actions D, A, B, C, respectively, with w, x, y, z
             intended for quadrants Q0, Q1, Q2, Q3 respectively.

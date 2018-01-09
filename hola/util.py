@@ -30,10 +30,10 @@ class NearbyObjectFinder:
     """
     Suppose you are working with some objects A1, A2, ... each of which
     has a point (x, y) associated with it.
-    For each new object Ai you want to check, is there already another
+    For each new object Ai, you want to check whether there is already another
     object Aj whose coordinates are almost the same, within a given
     threshold.
-    An object of this class can be used for this problem.
+    A NearbyObjectFinder can be used for this problem.
     Construct it with the desired threshold.
     Before adding any new object to it, use its 'findObject' method to
     see whether it already has an object with both x and y within the
@@ -53,7 +53,7 @@ class NearbyObjectFinder:
         :param obj: the object
         :return: nothing
         """
-        # We store the object under the rounded integer coordinates...
+        # We use buckets by storing the object under the rounded integer coordinates...
         xr, yr = int(round(x)), int(round(y))
         x_dict = self.objects.get(xr, {})
         # ...but we store it along with the given float coordinates.
