@@ -488,10 +488,10 @@ class TreePlacement:
         # of the polygon, the concave bends are precisely where we turn /right/
         # when going from one segment to the next.
         segs = []
-        for pts in interiorPointLists:
-            N = len(pts)
+        for ipts in interiorPointLists:
+            N = len(ipts)
             for i in range(N-1):
-                p0, p1 = pts[i:i+2]
+                p0, p1 = ipts[i:i+2]
                 x0 = (i != 0 and bendDir(i) == 1)
                 x1 = (i+1 != N-1 and bendDir(i+1) == 1)
                 segs.append(BoundarySegment(p0, x0, p1, x1, [self]))
@@ -577,20 +577,17 @@ class TreePlacement:
         # thereby fusing those flush sides into one long side.
         # Due to floating point rounding errors, we detect such "identical" points
         # using a small epsilon.
-        loop = pts + pts[:1]
-        N, i = len(loop), 0
-        pts = []
+        loop = pts[-1:] + pts + pts[:1]
+        N = len(loop)
         def samePts(p, q):
             px, py = p
             qx, qy = q
             return abs(px - qx) < EPSILON and abs(py - qy) < EPSILON
-        while i + 1 < N:
-            p, q = loop[i:i+2]
-            if samePts(p, q):
-                i += 2
-            else:
-                pts.append(p)
-                i += 1
+        same = [samePts(loop[i], loop[i+1]) for i in range(N-1)]
+        pts = []
+        for i in range(1, N-1):
+            if (not same[i-1]) and (not same[i]):
+                pts.append(loop[i])
         # Finally we insert the extra points for the edge directions.
         # Get the neighbour pairs for the root node. There may be two pairs,
         # if the root node happens to be a pinch node.
@@ -959,10 +956,10 @@ class Side:
         # Prepare functions for reading data off of nodes.
         if self.forward in Compass.horizontal:
             interval = (lambda t: t[:2])
-            dimension = (lambda u: u.w)
+            dimension = (lambda u: u.h)
         else:
             interval = (lambda t: t[2:])
-            dimension = (lambda u: u.h)
+            dimension = (lambda u: u.w)
         # Now consider all nodes belonging to the Side.
         for node in self.nodeseq:
             c, d = interval(node.boundingBoxxXyY())
