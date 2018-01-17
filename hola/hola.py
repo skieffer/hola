@@ -252,6 +252,8 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
 
     We perform HOLA layout on the given graph.
     """
+    # If trivial graph, nothing to do.
+    if G_orig.numEdges() == 0: return
     # If no configuration object was passed, we use a default config.
     if config is None:
         config = HolaConfig()

@@ -120,6 +120,9 @@ class Graph:
 
     EDGENODE_THICKNESS = 10
 
+    def numEdges(self):
+        return len(self.edges)
+
     def addPaddingToNodes(self, xPad, yPad):
         # padding may be positive or negative
         for node in self.nodes.values():
@@ -541,10 +544,10 @@ class Graph:
 
     def initFromGML(self, d):
         self.directed = (d.get('directed', None) == 1)
-        NL = d['nodeList']
+        NL = d.get('nodeList', [])
         for N in NL:
             self.addNode(N)
-        EL = d['edgeList']
+        EL = d.get('edgeList', [])
         for E in EL:
             self.addEdge(E) 
 
