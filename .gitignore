@@ -5,4 +5,5 @@ test/output/*
 .idea/*
 adaptagrams
 .DS_Store
+test/graphs/user
 
