@@ -310,21 +310,32 @@ class Graph:
                 g = self.nodes[ID]
                 h.x, h.y = g.x, g.y
 
-    def setRoutesInCorrespEdges(self, H):
+    def setRoutesInCorrespEdges(self, H, directed=True):
         """
         :param H: another Graph object
+        :param directed: say whether the edges are to be interpreted as directed (see below)
         :return: nothing
 
         For each of own edges, see if H has one of the same description.
         If so, set the route of the edge in H to equal the route of the edge in self.
+        If directed==False then then also check reversed descriptions.
         """
+        rev = False
         for dsc in self.edges.keys():
-            h = H.edges.get(dsc, None)
+            h = H.edges.get(dsc)
+            if not directed:
+                if h is not None:
+                    rev = False
+                else:
+                    rev_dsc = self.edges[dsc].writeReverseDescrip()
+                    h = H.edges.get(rev_dsc)
+                    rev = (h is not None)
             if h is not None:
                 g = self.edges[dsc]
-                h.route = g.route
-                h.routePoints = g.routePoints
-                h.bends = g.bends
+                h.route, h.routePoints, h.bends = g.getRouteLists(reverse=rev)
+                #h.route = g.route
+                #h.routePoints = g.routePoints
+                #h.bends = g.bends
 
     def setLogger(self, logger):
         self.logger = logger
@@ -1596,6 +1607,9 @@ def newBendNode(ID, x, y):
 
 
 class RoutingRig:
+    """
+    Convenience wrapper for Adaptagrams Router class
+    """
 
     def __init__(self, opts):
         """
@@ -2184,6 +2198,21 @@ class Edge:
         s = self.src.ID if self.src is not None else self.srcID
         t = self.tgt.ID if self.tgt is not None else self.tgtID
         return '%s --> %s'%(s, t)
+
+    def writeReverseDescrip(self):
+        s = self.src.ID if self.src is not None else self.srcID
+        t = self.tgt.ID if self.tgt is not None else self.tgtID
+        return '%s --> %s'%(t, s)
+
+    def getRouteLists(self, reverse=False):
+        L = (
+            self.route,
+            self.routePoints,
+            self.bends
+        )
+        if reverse:
+            L = map(lambda x: list(reversed(x)), L)
+        return L
 
     def otherEnd(self,node):
         return self.tgt if node.ID==self.src.ID else self.src

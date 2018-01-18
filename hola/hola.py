@@ -307,7 +307,7 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
         rig.route(setRoutesInEdges=True)
 
         t.graph.setPosesInCorrespNodes(G_orig)
-        t.graph.setRoutesInCorrespEdges(G_orig)
+        t.graph.setRoutesInCorrespEdges(G_orig, directed=False)
 
         if logger.level >= LogLevel.TIMING:
             logger.stopLastTimer() # HOLA Layout

@@ -346,11 +346,13 @@ class Tree:
         self.root.x, self.root.y = corerootpt
         # Compute just once the boolean to say whether we use permissive directions for
         # connection to the root node:
-        permissiveRootDirections = (permissive >= 1 and rootpt != corerootpt and
-                                    len(self.nodesByRank[1]) == 1)
+        permissiveRootDirections = (
+            permissive >= 2 or
+            (permissive == 1 and rootpt != corerootpt and len(self.nodesByRank[1]) == 1)
+        )
         for rep, edge in edges.items():
-            # Have we built the tree so that src node is always lower rank than tgt?
-            # Not sure. For now, we check.
+            # Determine the ranks of the source and target ends, so that we can set the
+            # conndirs in the right order.
             rs = self.rankByNodeID[edge.srcID]
             rt = self.rankByNodeID[edge.tgtID]
             # Use more permissive directions for root node if it is an ordinal placement.
