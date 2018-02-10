@@ -27,6 +27,7 @@
 
 from logging import LogLevel
 from collections import deque as Deque
+from collections import defaultdict
 from ortho import *
 from graphs import newBendNode
 from graphs import Edge
@@ -61,12 +62,10 @@ class FaceSet:
         self.faces = self.computeFaces()
         self.externalFace = self.identifyExternalFace()
         # Index the faces by the nodes they contain.
-        self.nodeIDtoFaces = {}
+        self.nodeIDtoFaces = defaultdict(list)
         for F in self.faces:
             for node in F.nodeseq:
-                fs = self.nodeIDtoFaces.get(node.ID, [])
-                fs.append(F)
-                self.nodeIDtoFaces[node.ID] = fs
+                self.nodeIDtoFaces[node.ID].append(F)
 
     def getAllTreePlacements(self):
         tps = []
@@ -252,6 +251,251 @@ class FaceSet:
         return faces
 
 
+class TwinBox:
+    """
+    Represents the polygon obtained by merging a tree node and root node.
+    """
+
+    def __init__(self, tp, iel):
+        """
+        :param tp: the TreePlacement object whose twinbox we represent
+        :param iel: ideal edge length
+        """
+        self.tp = tp
+        self.iel = iel
+        self.segs = []
+        self.ISTHMUS_WIDTH = 2
+        self.EPSILON = 0.01
+        # First compute the boundary points, which are tuples of the form
+        # (Node, compass_direction, (x, y), concave_boolean)
+        self.bdry_pts = self.computeBoundaryPoints()
+        # Store number of points:
+        self.N = len(self.bdry_pts)
+        # It is useful to have the doubled list, for finding intervals
+        self.dbl_bdry = self.bdry_pts * 2
+        # And finally we can compute the BoundarySegments.
+        self.segs = self.computeBoundarySegments()
+
+    def computeBoundaryPoints(self):
+        """
+        Compute and store list of points representing the polygon that is the union of
+        the treenode with the rootnode.
+
+        If the placement direction is ordinal, then we make a slight extension to
+        the treebox so that the two boxes do not meet at a mere point.
+
+        The polygon points proceed anticlockwise around the rootnode+treenode combination,
+        so that the right-hand side of each segment is the interior of the face,
+        IF the segment is inside the face. The left-hand side of each segment is the
+        interior of the polygon.
+
+        We add an extra point on the rootnode at each cardinal direction that is not
+        covered by the treebox. This allows us to easily report all and only the points
+        encountered in anticlockwise traversal of the polygon from one edge connection
+        point to another on the root node.
+
+        Points are stored in the form [owner-node, compass-direc, (x, y), concave-boolean]
+        where the concave-boolean says whether this is a concave point, i.e. a point
+        at which we turn to the right (not the left) in anticlockwise traversal.
+        """
+        # First we need to make a node to represent the treebox, and we need
+        # to work out its geometry.
+        # We also need to know on which side of the root node the two boxes make contact.
+        rootnode = self.tp.node
+        rx, ry = rootnode.x, rootnode.y
+        w, h, u, v = self.tp.treeBoxWithRootVector(iel=self.iel)
+        dp, dg = self.tp.placementDirec, self.tp.growthDirec
+        # Add "isthmus" for ordinal placement directions.
+        if dp in Compass.cwOrds:
+            iw = self.ISTHMUS_WIDTH
+            if dg in Compass.horizontal:
+                # We need iw to be less than half the width of the root node.
+                assert self.tp.node.w > 4
+                w += iw
+                u += -iw/2.0 if dg in Compass.increasing else iw/2.0
+            else:
+                # We need iw to be less than half the height of the root node.
+                assert self.tp.node.h > 4
+                h += iw
+                v += -iw/2.0 if dg in Compass.increasing else iw/2.0
+        # Make dummy node for treebox
+        treebox = Node()
+        treebox.x, treebox.y = rx + u, ry + v
+        treebox.w, treebox.h = w, h
+        # Determine the side of the root on which it meets the treebox.
+        if dp in Compass.cwCards:
+            contactSide = dp
+        else:
+            contactSide = filter(lambda d: d != dg, Compass.components[dp])[0]
+        # There are four possible contact sides, but we prefer to think about just the
+        # case in which it is the north side.
+        # In order to think in terms of that one case we can now define the vars N, NE, ...
+        # to equal ordered pairs (rootnode, d) in which d is the /actual/ dirction.
+        # We can then write the algorithm as if it were the north case, but use generic
+        # operations to make it work out correctly in all cases.
+        #
+        # But actually we use quadruples (rootnode, d, pt, cc) so that we can store the actual
+        # geometric point in the third place, and a boolean in the fourth place saying
+        # whether this is a point at which the boundary of the combined polygon is concave.
+        # (A boundary point is concave if we turn right there (not left) when
+        # traversing the boundary anticlockwise.)
+        N, NE, E, SE, S, SW, W, NW = [
+            [rootnode, d, rootnode.getBdryCompassPt(d), False] for d in Compass.cwClosedInterval(
+                                       contactSide, Compass.rotateCW(7, contactSide)
+                                   )
+        ]
+        # We also need the corner points of the treebox.
+        TSE, TNE, TNW, TSW = [
+            [treebox, D[1], treebox.getBdryCompassPt(D[1]), False] for D in [SE, NE, NW, SW]
+        ]
+        # Now we can build the list of boundary points, in anticlockwise order.
+        # We initialize it with the sequence of five points from W to E inclusive,
+        # which is always the same.
+        bdry_pts = [W, SW, S, SE, E]
+        # It is getting from E to W anticlockwise that is the tricky part.
+        # Of the seven remaining points, anywhere from just two to all seven of them
+        # may actually appear.
+        # The first question is whether N makes it into the list at all.
+        # If it does, it may appear either between NE and TSE or between TSW and NW.
+        # The second question is whether NE & TSE fuse and disappear, and likewise whether
+        # the pair TSW and NW fuse and disappear.
+        #
+        # In the North case that we think about, it is all determined by checking x coordinates
+        # and checking order relations on these. What "x" and "less than" actually mean depends
+        # on the contact side, so we set up functions for these.
+        x, lt = {
+            Compass.NORTH: (lambda P: P[2][0], lambda a, b: a < b),
+            Compass.EAST:  (lambda P: P[2][1], lambda a, b: a < b),
+            Compass.SOUTH: (lambda P: P[2][0], lambda a, b: a > b),
+            Compass.WEST:  (lambda P: P[2][1], lambda a, b: a > b)
+        }[contactSide]
+        # We need to be able to mark concavity:
+        def concave(P):
+            P[3] = True
+        # All the complexity comes in checking what happens with what we call the
+        # "transition points", i.e. the pair (NE, TSE) where we transition from the
+        # rootnode to the treebox, and the pair (TSW, NW) where we transition back
+        # from the treebox to the rootnode. Meanwhile the N point may or may not appear
+        # as a part of one of these two transitions. Each transition will also have
+        # exactly one concave point, and it is here that we must check concavity.
+        # The following function handles both transitions.
+        def check_transition_points(P, Q, N, tol=0):
+            """
+            :param P: The first point encountered in anticlockwise traversal
+            :param Q: The second point encountered in anticlockwise traversal
+            :param N: The North point
+            :param tol: epsilon tolerance for checking equality
+            :return: list by which bdry_pts should be extended
+            """
+            ext = []
+            # Do the transition points fuse? Use tolerance.
+            if abs(x(P) - x(Q)) <= tol:
+                # They do fuse, so we throw away both points,
+                # and N does not appear here either.
+                ext = []
+            else:
+                # The transition points do not fuse.
+                # Next we must check whether N will appear here.
+                # The condition is perhaps a little too clever to be clear.
+                # This function is only called twice: once with (P, Q) = (NE, TSE),
+                # and then again with (P, Q) = (TSW, NW).
+                # Consider first (P, Q) = (NE, TSE). In this case the first condition,
+                # lt( x(N), x(P) ), is automatically true, so we are really only
+                # checking the second one, which says TSE < N so that N is encountered
+                # before we transition to the treebox. Similarly, in the second case
+                # it is the second clause of the condition that is automatically
+                # satisfied, and we really only check the first. Note also
+                # that TSW < TSE guarantees that the condition can only be satisfied
+                # at most once, so we only add N to the list at most once.
+                if lt( x(N), x(P) ) and lt( x(Q), x(N) ):
+                    # N does appear here.
+                    ext = [P, N, Q]
+                else:
+                    # N does not appear here.
+                    ext = [P, Q]
+                # We also must check concavity.
+                # It is the point that is closer to N at which we have a concave turn.
+                if abs(x(P) - x(N)) > abs(x(Q) - x(N)):
+                    concave(Q)
+                else:
+                    concave(P)
+            return ext
+        # Now finally we can finish building the list of boundary points.
+        bdry_pts.extend(check_transition_points(NE, TSE, N, self.EPSILON))
+        bdry_pts.extend([TNE, TNW])
+        bdry_pts.extend(check_transition_points(TSW, NW, N, self.EPSILON))
+        return bdry_pts
+
+    def getBoundaryInterval(self, d1, d2):
+        """
+        :param d1: a cardinal compass direction
+        :param d2: a cardinal compass direction
+        :return: the closed subsequence of boundary points from d1 to d2,
+                 going anticlockwise
+        """
+        # Grab the double list of points.
+        pts = self.dbl_bdry
+        # Prepare a function to read the compass direction out of each point.
+        direc = lambda P: P[1]
+        # Now find the first point whose direction equals the first given one.
+        for i1 in xrange(self.N):
+            if direc(pts[i1]) == d1:
+                break
+        else:
+            # This should never happen. You should never be asking for a direction
+            # that we do not have. That means you think an edge connects to the root
+            # node on the same side where it meets the treebox.
+            assert False
+        # Now scan forward from the first point to find the first subsequent one
+        # whose direction equals the second given direction.
+        for i2 in xrange(i1+1, i1+1+self.N):
+            if direc(pts[i2]) == d2:
+                break
+        else:
+            # Again, this should never happen.
+            assert False
+        # Return the closed interval of points between the two that were found.
+        return pts[i1:i2+1]
+
+    def computeBoundarySegments(self):
+        """
+        Compute list of BoundarySegment objects, representing the part of the
+        interior face boundary made up by the polygon that is the union of
+        the treenode with the rootnode.
+        """
+        segs = []
+        v = self.tp.node
+        F = self.tp.face
+        # We will iterate over the neighbour pairs of the root node of the tree placement.
+        pairs = F.nbrPairs[v.ID]
+        # Prepare functions to extract data from the points.
+        pt = lambda P: P[2]
+        concave = lambda P: P[3]
+        # Iterate.
+        for u, w in pairs:
+            # u --> v --> w occurs in the clockwise node sequence of the face to which
+            # the root node v belongs and into which the tree placement tp
+            # is being put.
+            # Compute the cardinal direction from v to u and from v to w.
+            dvu = F.direc(v, u)
+            dvw = F.direc(v, w)
+            # Get the boundary points from the first cardinal direction to the second.
+            pts = self.getBoundaryInterval(dvu, dvw)
+            # For each pair of consecutive points, construct a BoundarySegment.
+            N = len(pts)
+            for i in range(N-1):
+                P0, P1 = pts[i:i+2]
+                # Determine which of the points is a crossing point.
+                x0 = (i != 0 and concave(P0))
+                x1 = (i+1 != N-1 and concave(P1))
+                # Build the segment.
+                segs.append(BoundarySegment(pt(P0), x0, pt(P1), x1, [self.tp]))
+        return segs
+
+    def getBoundarySegments(self):
+        return self.segs
+
+
 class TreePlacement:
 
     def __init__(self, tree, face, trunkroot, dp, dg, flip=False):
@@ -426,229 +670,9 @@ class TreePlacement:
                  interior face boundary made up by the polygon that is the union of
                  the treenode with the rootnode
         """
-        pts = self.polygonPoints(iel)
-        # We will want a function that tells us how the path bends at a given point.
-        def bendDir(i):
-            "return -1, 0, 1 if the bend is left, straight, right"
-            p = pts[-1:] + pts + pts[:1]
-            a, b, c = p[i:i+3]
-            # If either of the neighbours a, c of b lies at the same point as b
-            # (this happens in the case of a bridge edge), then we simply return 0,
-            # indicating that a bend does not happen at b.
-            ax, ay = a
-            bx, by = b
-            cx, cy = c
-            if ax == bx and ay == by: return 0
-            if cx == bx and cy == by: return 0
-            # Otherwise b differs from both of its neighbours, and we proceed to
-            # check whether it is a bend point.
-            d = Compass.cardinalDirection(a, b)
-            e = Compass.cardinalDirection(b, c)
-            di = Compass.cwCards.index(d)
-            ei = Compass.cwCards.index(e)
-            r = (ei+4-di)%4
-            r = -1 if r == 3 else r
-            assert(r in [-1, 0, 1])
-            return r
-        # The points of the polygon include the points where edges connect the root
-        # node to its neighbours in the face, and these neighbours may be four or two
-        # in number, depending on whether the root node is or is not a pinch node,
-        # respectively.
-        #
-        # Also there may be three neighbours if one of the edges is a bridge edge,
-        # or two neighbours with two bridge edges.
-        #
-        # In all cases there are either two or four edgepoints, and we have sorted the
-        # list of points so that the very last point is the final edgepoint.
-        # Moreover the points participating in the /interior/ boundary of the face
-        # are those between pairs of edgepoints, taken in order.
-        #
-        # I.e. if there are precisely two edge points then we want the segs between these.
-        # Otherwise there are four, and we want the segs between the 1st and 2nd, as
-        # well as the segs between the 3rd and the 4th.
-        interiorPointLists = []
-        pairs = self.face.nbrPairs[self.node.ID]
-        if len(pairs) == 1:
-            i0 = 0
-            while bendDir(i0) != 0: i0 += 1
-            interiorPointLists.append(pts[i0:])
-        else:
-            assert(len(pairs) == 2)
-            i0 = 0
-            while bendDir(i0) != 0: i0 += 1
-            i1 = i0 + 1
-            while bendDir(i1) != 0: i1 += 1
-            i2 = i1 + 1
-            while bendDir(i2) != 0: i2 += 1
-            interiorPointLists.append(pts[i0:i1+1])
-            interiorPointLists.append(pts[i2:])
-        # It is only at concave bend points that segment endpoints represent
-        # a crossing btw interior and exterior of the face.
-        # Since the segments are oriented so that the left-hand side is the inside
-        # of the polygon, the concave bends are precisely where we turn /right/
-        # when going from one segment to the next.
-        segs = []
-        for ipts in interiorPointLists:
-            N = len(ipts)
-            for i in range(N-1):
-                p0, p1 = ipts[i:i+2]
-                x0 = (i != 0 and bendDir(i) == 1)
-                x1 = (i+1 != N-1 and bendDir(i+1) == 1)
-                segs.append(BoundarySegment(p0, x0, p1, x1, [self]))
+        tb = TwinBox(self, iel)
+        segs = tb.getBoundarySegments()
         return segs
-
-    def polygonPoints(self, iel):
-        """
-        :param iel: ideal edge length
-        :return: list of points (x, y) of the polygon that is the union of
-                 the treenode with the rootnode
-
-        If the placement direction is ordinal, then we make a slight extension to
-        the treebox so that the two boxes do not meet at a mere point.
-
-        The polygon points proceed anticlockwise around the rootnode+treenode combination,
-        so that the right-hand side of each segment is the interior of the face,
-        IF the segment is inside the face. The left-hand side of each segment is the
-        interior of the polygon.
-
-        We add an extra point where each edge of the face connects to the
-        root node. These will be the only points whose two neighbouring segments
-        run in the same dimension as each other. We call these points "edgepoints."
-
-        The points are ordered so that the segments belonging to the /interior/ boundary
-        of the face are those from the first to second edgepoints inclusive, as well as
-        those from the third to fourth edgepoints inclusive in the case that the latter
-        exist, i.e. in the case that the rootnode is a pinch node.
-        """
-        ISTHMUS_WIDTH = 4
-        EPSILON = 0.01
-        rx, ry = self.node.x, self.node.y
-        w, h, u, v = self.treeBoxWithRootVector(iel=iel)
-        dp, dg = self.placementDirec, self.growthDirec
-        # Add "isthmus" for ordinal placement directions.
-        if dp in Compass.cwOrds:
-            iw = ISTHMUS_WIDTH
-            if dg in Compass.horizontal:
-                w += iw
-                u += -iw/2.0 if dg in Compass.increasing else iw/2.0
-            else:
-                h += iw
-                v += -iw/2.0 if dg in Compass.increasing else iw/2.0
-        # Make dummy node for treebox
-        treebox = Node()
-        treebox.x, treebox.y = rx + u, ry + v
-        treebox.w, treebox.h = w, h
-        # Determine the side of the root on which it meets the treebox.
-        if dp in Compass.cwCards:
-            contactSide = dp
-        else:
-            contactSide = filter(lambda d: d != dg, Compass.components[dp])[0]
-        # The corner of the root where we transfer to the treebox is the first
-        # corner of this side, when going anticlockwise.
-        transitionCorner = {
-            Compass.EAST: Compass.SE, Compass.SOUTH: Compass.SW,
-            Compass.WEST: Compass.NW, Compass.NORTH: Compass.NE
-        }[contactSide]
-        # We will visit the corners of the boxes in anticlockwise order.
-        remRootDirecs = Deque(Compass.acwOrds[:])
-        d0 = remRootDirecs.popleft()
-        # Build list of dirs on root that we hit before hitting the tree box.
-        dirs = []
-        dirs.append(d0)
-        # Now work anticlockwise through the ordinal directions until hitting
-        # the transition corner.
-        while not dirs[-1] == transitionCorner:
-            dirs.append(remRootDirecs.popleft())
-        # Initialise the list of points.
-        pts = [self.node.getBdryCompassPt(d) for d in dirs]
-        # Get first corner for tree box.
-        # This is the corner 90 degrees clockwise from the transition corner.
-        # (Draw the pictures and see for yourself.)
-        d1 = Compass.cw90(transitionCorner)
-        # Go through all the tree box points starting from here.
-        aa = Compass.acwOrds + Compass.acwOrds
-        treeBoxDirecs = aa[aa.index(d1): aa.index(d1)+4]
-        pts.extend([treebox.getBdryCompassPt(d) for d in treeBoxDirecs])
-        # And finish up with any remaining root node directions.
-        pts.extend([self.node.getBdryCompassPt(d) for d in remRootDirecs])
-        # Now if a side of the root node and a side of the tree box happen to be
-        # in flush alignment with each other, then there will be a doubled point
-        # in the points list. We now delete any such doubles (delete /both/ points),
-        # thereby fusing those flush sides into one long side.
-        # Due to floating point rounding errors, we detect such "identical" points
-        # using a small epsilon.
-        loop = pts[-1:] + pts + pts[:1]
-        N = len(loop)
-        def samePts(p, q):
-            px, py = p
-            qx, qy = q
-            return abs(px - qx) < EPSILON and abs(py - qy) < EPSILON
-        same = [samePts(loop[i], loop[i+1]) for i in range(N-1)]
-        pts = []
-        for i in range(1, N-1):
-            if (not same[i-1]) and (not same[i]):
-                pts.append(loop[i])
-        # Finally we insert the extra points for the edge directions.
-        # Get the neighbour pairs for the root node. There may be two pairs,
-        # if the root node happens to be a pinch node.
-        pairs = self.face.nbrPairs[self.node.ID]
-        # Now we consider the edgepoints in the direction of these neighbouring
-        # nodes. Since in each neighbour pair the nodes are listed in the order of
-        # clockwise traversal of the face edges, the corresponding edgepoints on
-        # the perimeter of the root node are such that this node has no other
-        # edgepoints between the first and the second in the anticlockwise
-        # direction.
-        # For example, if a pair of neighbouring nodes lie to the south, and to
-        # the west, in that order, then this node must not have neighbours to
-        # the east or north participating in this same face.
-        # Moreover, all the directions from that of the first neighbour in a pair
-        # to that of the second must be interior directions, pointing into the
-        # face.
-        epts = Deque()
-        for pair in pairs:
-            for nbr in pair:
-                d = Compass.cardinalDirection(self.node, nbr)
-                epts.append(self.node.getBdryCompassPt(d))
-        # Insert each edge point where it belongs.
-        def liesBetween(b, a, c):
-            ax, ay = a
-            bx, by = b
-            cx, cy = c
-            if abs(ax - cx) < EPSILON:
-                w, wl, wh = by, min(ay, cy), max(ay, cy)
-                z, z0 = bx, (ax + cx)/2.0
-            elif abs(ay - cy) < EPSILON:
-                w, wl, wh = bx, min(ax, cx), max(ax, cx)
-                z, z0 = by, (ay + cy)/2.0
-            else:
-                raise Exception('pts a and c not axis aligned')
-            return (abs(z - z0) < EPSILON) and (wl <= w <= wh)
-        i = 0
-        n = len(pts)
-        while len(epts) > 0:
-            ept = epts.popleft()
-            i0 = i
-            while True:
-                a, c = pts[i], pts[(i+1)%n]
-                if liesBetween(ept, a, c):
-                    i1 = i + 1
-                    # i1 is deliberately /not/ reduced mod n
-                    # This means if i1 == n then ept is simply appended at the end of the list.
-                    pts.insert(i1, ept)
-                    n += 1
-                    i = (i+2) % n
-                    # Yes, we deliberately reduce mod the /new/ n.
-                    break
-                else:
-                    i = (i+1) % n
-                    if i == i0:
-                        raise Exception('nowhere to place edgepoint')
-        # Finally, ensure that the last edge point is the very last point in the list.
-        # This ensures that the points of the polygon that are /interior/ to the face
-        # are those between the first and second edgepoints, and those between the
-        # third and fourth edgepoints, if the latter exist.
-        pts = pts[i1+1:] + pts[:i1+1]
-        return pts
 
     def somePointOppositeSegment(self, seg, iel=0, openInterval=False):
         """
@@ -830,6 +854,9 @@ class Side:
         # this Side:
         self.treePlacements = []
 
+    def getForwardDirec(self):
+        return self.forward
+
     def getNumRootNodes(self):
         return len(filter(lambda v: v.isRootNode, self.nodeseq))
 
@@ -856,6 +883,9 @@ class Side:
 
     def firstNode(self):
         return self.nodeseq[0]
+
+    def lastNode(self):
+        return self.nodeseq[-1]
 
     def aWidestNode(self):
         """
@@ -970,71 +1000,6 @@ class Side:
 
     def __iter__(self):
         return iter(self.nodeseq)
-
-    def treePlacementIsRelevant(self, tp):
-        """
-        :param tp: a TreePlacement whose root node belongs to this Side
-        :return: boolean saying if the placement is actually relevant to this
-                 side
-
-                 This will always be True if the root node is not a pinch
-                 node, and there are no bridge edges, but otherwise it may be False.
-        """
-        root = tp.node
-        assert(root in self.nodeseq)
-        pairs = self.face.nbrPairs[root.ID]
-        if len(pairs) == 1:
-            return True
-        else:
-            assert(len(pairs) == 2)
-            # In this case there are four Sides of self.Face which include root
-            # among their nodes, and self is among those.
-            # But the tree placement tp is relevant to just two of those Sides,
-            # and we must decide if self is one of them.
-            # We consider the four nodes named in the neighbour pairs.
-            a, b = pairs[0]
-            c, d = pairs[1]
-            nbrs = [a, b, c, d]
-            # The order of the set {a, b, c, d} may be four, but it may also be
-            # two or three, if root has one resp. two bridge edges.
-            # Nevertheless, since the neighbour pairs were computed by traversing the
-            # nodes of the face in the forward order, the list [a, b, c, d] is in
-            # anticlockwise order, where we understand the outgoing side of a bridge
-            # edge to come before the incoming side, in anticlockwise order.
-            # With this understanding, we simply need to compute the compass direction
-            # from root to each of a, b, c, d, and then find where the placement direction
-            # fits into this order. The two adjacent sides are the two to which the tree placement
-            # is relevant.
-            direcs = [Compass.cardinalDirection(root, v) for v in nbrs]
-            dp = tp.placementDirec
-            # We should not be considering a tree placement in a direction already occupied
-            # by one of the sides of the face.
-            assert(dp not in direcs)
-            # Now compute the indices i0, i1 in {0, 1, 2, 3} of the two nbrs which are the closest
-            # to dp in each direction.
-            # For a given direction we cannot use the mere compass rose distance, since that does
-            # not take account of whether the edge is outgoing or incoming.
-            # So we double the rose distance and add 1 for the "more distant direction," which
-            # is the outgoing edge when looking clockwise, and the incoming edge when looking in
-            # the anticlockwise direction.
-            # We can judge incoming vs. outgoing by the parity of index i, since nbr pairs are
-            # always of the form [incoming, outgoing].
-            i0 = min(range(4),
-                key=lambda i: 2*Compass.cwRoseDistance(dp, direcs[i]) + (1 if i%2==1 else 0)
-            )
-            i1 = min(range(4),
-                key=lambda i: 2*Compass.acwRoseDistance(dp, direcs[i]) + (1 if i%2==0 else 0)
-            )
-            # Finally we must say whether self is among the two Sides corresponding to i0, i1.
-            for i in [i0, i1]:
-                subseq = [nbrs[i], root]
-                if i%2 == 1: subseq.reverse()
-                if self.containsSubseq(subseq):
-                    # In this case self is one of the relevant sides.
-                    return True
-            else:
-                # self was not one of the relevant sides.
-                return False
 
     def addTreePlacement(self, tp):
         assert(tp.node in self.nodeseq)
@@ -1231,6 +1196,101 @@ class BoundarySegment:
         return self.crossings[i]
 
 
+class Nexus:
+    """
+    Regarded as a member of a face F, a node u belongs to certain Sides si
+    of F. As we traverse the face in the clockwise direction (i.e. so that the
+    interior of the face is always to the /right/), each Side si gets a direction,
+    and therefore may stand in one of eight relations to node u: it may be /entering/
+    or /exiting/, and this may be from or to any of the four cardinal compass directions.
+
+    A single Side may stand in two such relations, as when the Node lies along
+    the middle of the Side, or else in just one such relation, as when a Node
+    lies at one end or the other.
+
+    This class represents a Node in this capacity as a "joining point" of several
+    Sides of a Face.
+
+    It stores eight "slots" that are either empty (None) or else occupied by a Side
+    object.
+    """
+
+    # Polarity (in or out, through a given direction)
+    ENTER_FROM = 0
+    EXIT_TO = 1
+    # For addressing we use 2*direc+polarity, where direc is a Compass cardinal direction.
+    # Thus we have:
+    #    -EAST  = 0
+    #    +EAST  = 1
+    #    -SOUTH = 2
+    #    +SOUTH = 3
+    #    -WEST  = 4
+    #    +WEST  = 5
+    #    -NORTH = 6
+    #    +NORTH = 7
+    # where - means entering from, and + means exiting to.
+
+    def __init__(self, node):
+        self.node = node
+        self.slots = [None] * 8
+        self.isEmpty = True
+
+    def writeSlot(self, polarity, direc, x):
+        """
+        Write object x to the slot representing the given
+        polarity and direction.
+        """
+        self.slots[2*direc+polarity] = x
+        self.isEmpty = False
+
+    def addSide(self, side):
+        assert side.containsNode(self.node)
+        fwd = side.getForwardDirec()
+        rev = Compass.flip(fwd)
+        if self.node != side.lastNode():
+            # If this node is not the last on this side, then
+            # the side exits the node, in the fwd direc.
+            self.writeSlot(Nexus.EXIT_TO, fwd, side)
+        if self.node != side.firstNode():
+            # If this node is not the first on this side, then
+            # the side enters the node, from the rev direc.
+            self.writeSlot(Nexus.ENTER_FROM, rev, side)
+
+    def getNeighboursOfDirec(self, direc):
+        """
+        :param direc: any (cardinal or ordinal) Compass direction
+        :return: the set of objects nearest the given direc, looking in both
+                 the clockwise and anticlockwise directions. The set will be
+                 of order 0, 1 or 2, depending on whether the slots are all empty,
+                 or (if not) whether distinct objects are encountered in the two
+                 directions.
+        """
+        nbrs = set()
+        if self.isEmpty:
+            return nbrs
+        # First we must convert the given direc into the right starting index
+        # into our list of slots.
+        i0 = [
+            Compass.NE, Compass.EAST, Compass.SE, Compass.SOUTH,
+            Compass.SW, Compass.WEST, Compass.NW, Compass.NORTH
+        ].index(direc)
+        # To manage search in the two directions we use a list of
+        # "index differentials":
+        di = [1, -1]
+        for d in di:
+            i = i0
+            while self.slots[i] is None:
+                i = (i + d) % 8
+                # Since we already checked that we're not empty, we shouldn't
+                # cycle forever. Just to be sure:
+                assert i != i0
+            nbrs.add(self.slots[i])
+            # Subtle point: for the anticlockwise search we want to start
+            # at the index just prior to the one where we started the first time.
+            i0 = (i0 - 1) % 8
+        return nbrs
+
+
 class Face:
 
     def __init__(self, G, logger, config):
@@ -1242,20 +1302,27 @@ class Face:
         self.external = False
         self.ID = None
 
-        # Dictionary nodeID:list
-        # list is of the form [(w, v)] or [(w1, v1), (w2, v2)]
-        # giving the one or two (for pinch nodes) neighbour pairs of the
-        # key node, in clockwise order.
+        # Dictionary of form nodeID:list.
+        # If nodeID = u.ID, then
+        # list is of all ordered pairs (w, v) of Nodes w, v such that
+        # the sequence w-u-v is encountered when traversing this Face
+        # in clockwise order.
         self.nbrPairs = {}
 
         self.sides = []
-        self.nodeIDsToSides = {}
+        self.nodeIDsToNexes = {}
 
         # Dictionary of Nodes, by ID, being the large boxes added to represent
         # whole trees, with padding:
         self.treenodes = {}
 
         self.nodeIDToTreePlacement = {}
+
+    def __repr__(self):
+        return 'Face%s: %s' % (
+            ' (external)' if self.external else '',
+            [node.ID for node in self.nodeseq]
+        )
 
     def getAllTreePlacements(self):
         return self.nodeIDToTreePlacement.values()
@@ -1381,15 +1448,14 @@ class Face:
         self.n = len(self.nodeseq)
         self.computeNbrPairs()
         self.computeSides()
+        self.buildNexes()
 
     def computeNbrPairs(self):
-        # First pass: identify the one or two indices at which each node
+        # First pass: identify the indices at which each node
         # occurs in the nodeseq.
-        indices = {}
+        indices = defaultdict(list)
         for i, v in enumerate(self.nodeseq):
-            L = indices.get(v.ID, [])
-            L.append(i)
-            indices[v.ID] = L
+            indices[v.ID].append(i)
         # Now assemble the neighbour pairs.
         n = self.n
         ns = self.nodeseq
@@ -1399,10 +1465,8 @@ class Face:
             self.nbrPairs[v.ID] = pairs
 
     def computeSides(self):
-        # Get index of first bend node.
-        for i0 in range(self.n):
-            if self.isBendNode(self.nodeseq[i0]):
-                break
+        # Get index of first bend.
+        i0 = self.findIndexOfFirstBend()
         # Prepare a node sequence starting from node i0, then
         # cycling back around to i0 and including node i0 /again/.
         # Then a Side begins at the start of this sequence, and a
@@ -1426,28 +1490,57 @@ class Face:
                 d0 = d1
         # Create the final Side.
         self.sides.append(Side(self, nodes, d0))
-        # Now index the Sides by the Nodes they contain.
+
+    def buildNexes(self):
+        # Build a Nexus for each Node.
+        for node in self.nodeseq:
+            self.nodeIDsToNexes[node.ID] = Nexus(node)
+        # Now add each Side to the Nexus for each Node it contains.
         for S in self.sides:
             for u in S:
-                L = self.nodeIDsToSides.get(u.ID, [])
-                L.append(S)
-                self.nodeIDsToSides[u.ID] = L
+                self.nodeIDsToNexes[u.ID].addSide(S)
 
-    def __repr__(self):
-        return 'Face%s: %s' % (
-            ' (external)' if self.external else '',
-            [node.ID for node in self.nodeseq]
-        )
+    def getRelevantSidesForPlacement(self, tp):
+        """
+        :param tp: a TreePlacement
+        :return: a list of all the Sides that are relevant for this TreePlacement
+        """
+        nexus = self.nodeIDsToNexes[tp.node.ID]
+        sides = list(nexus.getNeighboursOfDirec(tp.placementDirec))
+        return sides
 
-    def isBendNode(self, v):
-        pairs = self.nbrPairs[v.ID]
-        if len(pairs) == 2:
-            return True
+    def findIndexOfFirstBend(self):
+        """
+        Scanning through this Face's nodeseq, look for the first place where
+        a bend occurs, i.e. where the incoming and outgoing directions are
+        not the same.
+        :return: the index where the bend occurs
+
+        NB: We say a bend occurs at an index, not at a Node, since a Node may
+        be encountered more than once during traversal of the Face. On one encounter
+        a bend may happen there, while on another it may not. Consider for example
+        the external face and node x here:
+
+                        etc.
+                         |
+                   etc.--x
+                         |
+                        etc.
+
+        In this example node x is encountered three times: twice a bend occurs
+        there; once it does not.
+        """
+        loop = self.nodeseq[-1:] + self.nodeseq[:] + self.nodeseq[:1]
+        for i in range(self.n):
+            u, v, w = loop[i:i+3]
+            duv = self.direc(u, v)
+            dvw = self.direc(v, w)
+            if duv != dvw:
+                return i
         else:
-            u, w = pairs[0]
-            duv = self.graph.nodeConf.getDirec(u, v)
-            dvw = self.graph.nodeConf.getDirec(v, w)
-            return duv != dvw
+            # We didn't find a bend. This should never happen, because every
+            # face should have at least one bend.
+            assert False
 
     def computeBoundarySegments(self, iel):
         segs = []
@@ -1503,7 +1596,6 @@ class Face:
                     pts = [u.getBdryCompassPt(d) for d in dirs]
                     for j in range(len(pts) - 1):
                         p0, p1 = pts[j:j+2]
-                        d0, d1 = dirs[j:j+2]
                         # We consider node boundary segments to be interior, but edge segments
                         # to be exterior (because things work well this way), which means
                         # there is no crossing at either end of a node boundary segment.
@@ -1523,8 +1615,7 @@ class Face:
         :return: nothing
         """
         # Ask Side object(s) to note the placement.
-        for S in self.nodeIDsToSides[tp.node.ID]:
-            if S.treePlacementIsRelevant(tp):
+        for S in self.getRelevantSidesForPlacement(tp):
                 S.addTreePlacement(tp)
         # Now insert the treenode.
         w, h, u, v = tp.treeBoxWithRootVector(iel=iel)
@@ -1686,15 +1777,6 @@ class Face:
         else:
             raise Exception('Did not get unique collateral projseq.')
         return ps0
-
-    def getRelevantSidesForPlacement(self, tp):
-        """
-        :param tp: a TreePlacement
-        :return: a list of all the Sides that are relevant for this TreePlacement
-        """
-        sides = self.nodeIDsToSides[tp.node.ID]
-        sides = filter(lambda S: S.treePlacementIsRelevant(tp), sides)
-        return sides
 
     def getCollateralProjSeqs(self, tp, iel):
         """
