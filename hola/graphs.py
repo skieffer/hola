@@ -634,8 +634,14 @@ class Graph:
 
     def makeFeasible(self, op=False, ccs=None, pcs=[]):
         iel = 1 # doesn't matter
-        alg, rs = self.setupFDLayout(iel, op=op, ccs=ccs, pcs=pcs, topoAddon=topoAddon)
+        alg, rs = self.setupFDLayout(iel, op=op, ccs=ccs, pcs=pcs)
         alg.makeFeasible()
+        self.moveNodesToRects(rs)
+
+    def moveToIntegers(self, op=False, ccs=None, pcs=[]):
+        iel = 1 # doesn't matter
+        alg, rs = self.setupFDLayout(iel, op=op, ccs=ccs, pcs=pcs)
+        alg.moveToIntegers()
         self.moveNodesToRects(rs)
 
     def setupFDLayout(self, iel, op=False, ccs=None, pcs=[], topoAddon=None, logger=None,

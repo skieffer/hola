@@ -62,6 +62,10 @@ class HolaConfig:
         self.TREE_PLACEMENT_FAVOUR_EXTERNAL = True
         self.TREE_PLACEMENT_FAVOUR_ISOLATION = True
         """
+        We pad the nodes to keep gaps between them.
+        """
+        self.NODE_PADDING_IEL_SCALAR = 0.25
+        """
         For neighbour stress we scale the ideal edge length.
         """
         self.NBR_STRESS_IEL_SCALAR = 1/20.0
@@ -121,12 +125,16 @@ class HolaConfig:
         """
         self.ROUTING_OPT_IEL_SCALARS = {
             'crossingPenalty': 2,
-            'shapeBufferDistance': 0.125,
+            # DEPRECATED: Nodes are padded throughout, so no need for this:
+            'shapeBufferDistance': 0,
+            #
             'segmentPenalty': 0.5
         }
         self.ROUTING_OPT_DEFAULTS = {
             'crossingPenalty': 0,
-            'shapeBufferDistance': 8,
+            # DEPRECATED: Nodes are padded throughout, so no need for this:
+            'shapeBufferDistance': 0,
+            #
             'segmentPenalty': 50
         }
         """
@@ -287,6 +295,10 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
 
     avgdim = G.computeAvgNodeDim()
     iel = config.IEL_MULTIPLIER * avgdim
+
+    node_padding = config.NODE_PADDING_IEL_SCALAR * iel
+    G.addPaddingToNodes(node_padding, node_padding)
+
     C = prune(G)
 
     # If it's just a tree, layout and quit.
@@ -306,6 +318,7 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
         rig = t.buildOwnRoutingRig(rig, permissive=config.PERMISSIVE_PURE_TREE_ROUTING)
         rig.route(setRoutesInEdges=True)
 
+        G_orig.addPaddingToNodes(-node_padding, -node_padding)
         t.graph.setPosesInCorrespNodes(G_orig)
         t.graph.setRoutesInCorrespEdges(G_orig, directed=False)
 
@@ -320,15 +333,6 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
 
     trunk.setIDsAsLabels()
     trunk.iel = iel
-
-    # We want nodes to be padded through Step 5.
-    # The we will remove the padding before routing the edges in Step 6,
-    # so that there are "alleyways" between the nodes.
-    node_padding = config.getShapeBufferDistance(iel=iel)
-    # Save scalar to restore later.
-    shapeBufferDistanceScalar = config.ROUTING_OPT_IEL_SCALARS['shapeBufferDistance']
-    config.ROUTING_OPT_IEL_SCALARS['shapeBufferDistance'] = None
-    trunk.addPaddingToNodes(node_padding, node_padding)
 
     # Do an FD layout with NO overlap prevention.
     startT('01_FD', logger)
@@ -402,26 +406,12 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
     if logger.level >= LogLevel.STAGE_GRAPHS:
         logger.writeGML("_05_chainConfig", graph=trunk)
 
-    # Now we remove the node padding.
-    trunk.addPaddingToNodes(-node_padding, -node_padding)
-
     # Route connectors.
-    doRouting = True
-    if doRouting:
-        startT('06_routing', logger)
-        # Save shape buffer distance scalar, and then set temporarily to zero.
-        sbd_scalar = config.ROUTING_OPT_IEL_SCALARS['shapeBufferDistance']
-        config.ROUTING_OPT_IEL_SCALARS['shapeBufferDistance'] = 0
-        # Now do the routing.
-        orthoRoute(trunk, logger, config, iel=iel)
-        # Restore shape buffer distance.
-        config.ROUTING_OPT_IEL_SCALARS['shapeBufferDistance'] = sbd_scalar
-        stopT(logger)
-        if logger.level >= LogLevel.STAGE_GRAPHS:
-            logger.writeGML("_06_routing", graph=trunk)
-
-    # Now restore shape buffer distance for routing.
-    config.ROUTING_OPT_IEL_SCALARS['shapeBufferDistance'] = shapeBufferDistanceScalar
+    startT('06_routing', logger)
+    orthoRoute(trunk, logger, config, iel=iel)
+    stopT(logger)
+    if logger.level >= LogLevel.STAGE_GRAPHS:
+        logger.writeGML("_06_routing", graph=trunk)
 
     # Remove edge overlaps.
     startT('07_EOR', logger)
@@ -563,6 +553,10 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
     # update their positions from P.
     P.setPosesInCorrespNodes(trunk)
 
+    # TESTING
+    #G.moveToIntegers()
+    #########
+
     # Now can set the route points.
     G.clearAllRoutes()
     if chains is not None:
@@ -580,11 +574,14 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
     startT('Routing', logger)
     rig.route(setRoutesInEdges=True)
     stopT(logger)
-    rig.router.outputInstanceToSVG('testOut/cleanup/routes')
+    #rig.router.outputInstanceToSVG('output/finalroutes')
     for tree in trees:
         tree.setEdgeRoutesInGraph(G)
 
     stopT(logger) # Final cleanup and routing
+
+    # Remove node padding.
+    G_orig.addPaddingToNodes(-node_padding, -node_padding)
 
     G.setPosesInCorrespNodes(G_orig)
     G.setRoutesInCorrespEdges(G_orig)
@@ -700,7 +697,7 @@ def orthoRoute(G, logger, config, iel=0):
     while True:
         #print 'numRoutings: %s' % numRoutings
         router.processTransaction()
-        router.outputInstanceToSVG("output/routing%d" % numRoutings)
+        #router.outputInstanceToSVG("output/routing%d" % numRoutings)
         numRoutings += 1
         assert(numRoutings <= 5)
         # Are there any nodes having all of their edges routed

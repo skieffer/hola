@@ -12,6 +12,8 @@ def main():
     config.useFastSettings(True)
     config.LOG_LEVEL_GENERAL = LogLevel.TIMING
     config.LOG_LEVEL_TREE_PLACEMENT = LogLevel.TIMING
+    #config.LOG_LEVEL_GENERAL = LogLevel.FINER_STAGE_GRAPHS
+    #config.LOG_LEVEL_TREE_PLACEMENT = LogLevel.FINER_STAGE_GRAPHS
     basic_tools.doHOLA(name, config=config)
 
 if __name__ == '__main__':
