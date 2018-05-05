@@ -3,21 +3,39 @@
 """
 Generate a module (write to stdout) encoding ALL the posible
 assignments ("quad actions") for oriented reduced distributions.
-It will look like this:
+
+A quad action is a sequence of four numerical codes, saying what to do in each
+of the four quadrants, Q0, Q1, Q2, Q3, respectively. Before we switched to
+numerical codes we used to use letter codes, and the mapping and meanings are
+as follows:
+
+    Num Char Meaning
+    --- ---- -------
+    0   D    "Do Nothing"
+    1   A    "Anticlockwise": assign the node nearest the anticlockwise end
+                              of the interval to that semiaxis. E.g. in Q0 the
+                              node nearest semiaxis 0 gets assigned to it.
+    2   B    "Both": do both the Clockwise and Anticlockwise assignments.
+    3   C    "Clockwise": assign the node nearest the clockwise end of the
+                          interval to that semiaxis. E.g. in Q0 the node
+                          nearest semiaxis 1 gets assigned to it.
+
+The output will look like this:
 
 qas = {
     '0112':{    # oriented reduced distribution
         '4':{   # number of edges wanting an assignment
             '15':[    # which semiaxes are used, binary encoded
-                '3333', '0312'  # quad actions
+                '0112'  # quad actions
             ]
         },
         '3':{
-            '7':[ # (012)
-
+            '7':[ # use semiaxes 012
+                '0113'
             ],
-            '11':[ # (013)
-
+            '11':[ # use semiazes 013
+                '0102',
+                '0133'
             ]
         },
         '2':{
