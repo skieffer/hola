@@ -76,7 +76,7 @@ entries as d0, d1, d2, d3. Then d is said to be _oriented_ when:
 
     (2) d1 <= d3, and
 
-    (3) (d1 > d0) or (d2 <= d3).
+    (3) (d0 < d1) or (d2 <= d3).
 
 The definition is designed to approximate as closely as posible the condition
 that the entries of an oriented distribution go in ascending order. It is also
@@ -119,8 +119,8 @@ The proof of the claim is a simple matter of checking cases. Managing the cases
 is aided by the following definition:
 
 Defn: The _composition_ of a distribution is a vector <a, b, c> indicating how
-many 0's, 1's, and 2's are in the distribution. E.g. the composition of (0, 1,
-1, 1) is <1, 3, 0>.
+many 0's, 1's, and 2's are in the distribution. E.g. the composition of
+(0, 1, 1, 1) is <1, 3, 0>.
 
 
 Proof of theorem:
@@ -159,14 +159,14 @@ precisely six pairs of ORDs having the same composition:
     1212
 
 and in every case the one is obtained from the other by the "twist" permutation
-(abcd) |--> (acbd), which does not belong to the dihedral group D4. This
-establishes uniqueness. QED
+(abcd) |--> (acbd) (or a rotation thereof), which does not belong to the
+dihedral group D4. This establishes uniqueness. QED
 
 
 
 PROBLEM INPUT
 
-You specify the problem as follows:
+An instance of the Assignment Problem is to be specified as follows:
 
     (1) You give the relative coordinates (dx, dy) of each neighbour node ui
         relative to the central node c.
@@ -184,11 +184,11 @@ quadrants, it specifies an action, indicated by a code letter:
     ---- -------
     D    "Do Nothing"
     A    "Anticlockwise": assign the node nearest the anticlockwise end
-                          of the interval to that semiaxis. E.g. in Q0 the
+                          of the quadrant to that semiaxis. E.g. in Q0 the
                           node nearest semiaxis 0 gets assigned to it.
     B    "Both": do both the Clockwise and Anticlockwise assignments.
     C    "Clockwise": assign the node nearest the clockwise end of the
-                      interval to that semiaxis. E.g. in Q0 the node
+                      quadrant to that semiaxis. E.g. in Q0 the node
                       nearest semiaxis 1 gets assigned to it.
 
 
@@ -237,4 +237,8 @@ the problem) by these permutations.  That is, we use these permutations to map
 the given problem into an entry in the lookup table, and then we apply the
 inverses of these permutations to the quad actions from that entry in order to
 make them applicable to the given problem.
+
+
+This is a high-level description of the solution method. For details, examine
+the modules in this package.
 
