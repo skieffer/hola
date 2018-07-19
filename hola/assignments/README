@@ -69,27 +69,30 @@ combinatorial problem we face is equivalent up to flips and rotations. In
 algebraic terms, this means that we want to "mod out" by the dihedral group D4.
 In order to achieve this we need to pick a canonical representative of each
 equivalence class, and for this we introduce the notion of an _oriented reduced
-distribution_. Let a reduced distribution d be given. We refer to its four
-entries as d0, d1, d2, d3. Then d is said to be _oriented_ when:
+distribution_.
 
-    (1) d0 is minimal,
+Defn: Let a reduced distribution d = (d0, d1, d2, d3) be given. Then d
+      is said to be _oriented_ when:
 
-    (2) d1 <= d3, and
+            (1) d0 is minimal,
 
-    (3) (d0 < d1) or (d2 <= d3).
+            (2) d1 <= d3, and
+
+            (3) (d0 < d1) or (d2 <= d3).
 
 The definition is designed to approximate as closely as posible the condition
-that the entries of an oriented distribution go in ascending order. It is also
+that the entries of an oriented distribution go in ascending order; it is also
 designed so that each equivalence class under the permutations of D4 has a
-unique oriented element, which is our first theorem:
+unique oriented element. We prove this below. First we need some definitions
+and a claim.
 
 Defn: Two distributions d, d' are _equivalent_ if there exists a
       permutation phi in D4 such that d' = phi d.
 
-Thm: Every reduced distrubtion is equivalent to exactly one oriented
-     reduced distribution.
-
-Before proving the theorem we have a claim:
+Defn: The _content_ of a distribution is a vector <a, b, c> indicating how
+      many 0's, 1's, and 2's are in the distribution. E.g. the content of
+      (0, 1, 1, 1) is <1, 3, 0> because the distribution has one 0, three 1's,
+      and no 2's.
 
 Claim: There are exactly 20 nonzero oriented reduced distributions, and they
 are as follows:
@@ -115,17 +118,21 @@ are as follows:
                                 (1,2,2,2),
                                 (2,2,2,2)
 
-The proof of the claim is a simple matter of checking cases. Managing the cases
-is aided by the following definition:
+(We only care about nonzero distributions, because in the zero case there is
+nothing to be done, i.e. no possible node alignments to be made.) The proof of
+the claim is a simple matter of checking cases, which is best managed according
+to content. That is, first consider all reduced distributions of content <3, 1,
+0>, then <2, 2, 0>, then <1, 3, 0>, and so on, in logical order up to <0, 0, 4>.
+You will find that the twenty listed above are the only ones.
 
-Defn: The _composition_ of a distribution is a vector <a, b, c> indicating how
-many 0's, 1's, and 2's are in the distribution. E.g. the composition of
-(0, 1, 1, 1) is <1, 3, 0>.
+Finally we can prove the...
 
+Theorem: Every reduced distrubtion is equivalent to exactly one oriented
+         reduced distribution.
 
-Proof of theorem:
+Proof:
 
-The existence part of the proof is easy; we give an algorithm to orient any
+The existence part of the proof is easy: we give an algorithm to orient any
 reduced distribution by composing elements of D4:
 
     Step 1: Rotate so that d0 is minimal.
@@ -135,10 +142,11 @@ reduced distribution by composing elements of D4:
 
     Step 3: If d1 = d0 and d2 > d3, flip over the vertical axis.
 
-For uniqueness, let any ORD d be given. We want to show there is no phi in D4
-that maps d to another ORD. But it is clear that phi d must have the same composition
-as d. And examining the list of the twenty ORDs above, we find that there are
-precisely six pairs of ORDs having the same composition:
+For uniqueness, let any oriented reduced distribution ("ORD" henceforth) d be
+given. We want to show there is no phi in D4 that maps d to another ORD. But it
+is clear that whatever permutation phi is chosen, phi d must have the same
+content as d. And examining the list of the twenty ORDs above, we find that
+there are precisely six pairs of ORDs having the same content:
 
     0011
     0101
@@ -159,7 +167,7 @@ precisely six pairs of ORDs having the same composition:
     1212
 
 and in every case the one is obtained from the other by the "twist" permutation
-(abcd) |--> (acbd) (or a rotation thereof), which does not belong to the
+(abcd) |--> (acbd), or a rotation thereof, which does /not/ belong to the
 dihedral group D4. This establishes uniqueness. QED
 
 
@@ -182,7 +190,6 @@ quadrants, it specifies an action, indicated by a code letter:
 
     Char Meaning
     ---- -------
-    D    "Do Nothing"
     A    "Anticlockwise": assign the node nearest the anticlockwise end
                           of the quadrant to that semiaxis. E.g. in Q0 the
                           node nearest semiaxis 0 gets assigned to it.
@@ -190,17 +197,47 @@ quadrants, it specifies an action, indicated by a code letter:
     C    "Clockwise": assign the node nearest the clockwise end of the
                       quadrant to that semiaxis. E.g. in Q0 the node
                       nearest semiaxis 1 gets assigned to it.
+    D    "Do Nothing"
 
 
-Thus a quad action is a sequence of four of these code letters, like "DAAC",
-indicating what should happen in quadrants Q0, Q1, Q2, Q3, respectively.
+Thus a quad action is a sequence of four of these code letters,
+indicating what should happen in quadrants Q0, Q1, Q2, Q3, respectively. 
+
+For example, suppose the picture looks like this:
+
+                            *
+                        *   |  *
+                       *    |   
+                      ------+------
+                       *    |   *
+                        *   |
+                         *
+
+so that the distribution is (1, 3, 2, 1), and the reduced distribution is
+(1, 2, 2, 1). Semiaxis S3 is occupied, but all others are free.
+
+In this case the quad action "DAAC" says to do nothing in Q0, to assign the
+anti-clockwise-most node in quadrant Q1 to semiaxis S1, and so forth, resulting
+in the following picture:
+
+                            *
+                        *   |   
+                            |   
+                     *------+------*
+                       *    |   *
+                        *   |
+                            *
+
+On the other hand, the quad action "DACC" would be illegal in the given
+situation, since it tries to put the clockwise-most node from quadrant Q2 onto
+semiaxis S3, which is already occupied.
 
 
 
 SOLUTION METHOD
 
-The solution can be broken down into three components: geometric, algebraic, and
-combinatorial.
+The solution can be broken down into three components: combinatorial,
+geometric, and algebraic.
 
 
 COMBINATORIAL COMPONENT:
@@ -229,14 +266,17 @@ ALGEBRAIC COMPONENT:
 
 Given the actual distribution of neighbour nodes, we first turn this into a
 reduced distribution, and then we compute the permutation phi in D4 that maps
-this to an oriented reduced distribution. We also compute the corresponding
-permutation sigma on the semiaxes (which generally is not the same as phi).
+this to an oriented reduced distribution. For this we use the algorithm given
+in the proof of the theorem above. We also compute the corresponding
+permutation sigma on the semiaxes, which generally is not the same as phi. For
+example, if phi is the flip over the vertical axis, i.e. the product of
+transpositions (Q0 Q1)(Q3 Q2), then sigma is the transposition (S0 S2).
 
 We then essentially conjugate the lookup table (from the combinatorial part of
-the problem) by these permutations.  That is, we use these permutations to map
-the given problem into an entry in the lookup table, and then we apply the
-inverses of these permutations to the quad actions from that entry in order to
-make them applicable to the given problem.
+the solution) by these permutations (phi, sigma).  That is, we use these
+permutations to map the given problem into an entry in the lookup table, and
+then we apply the inverses of these permutations to the quad actions from that
+entry in order to make them applicable to the given problem.
 
 
 This is a high-level description of the solution method. For details, examine
