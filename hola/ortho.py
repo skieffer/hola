@@ -166,6 +166,15 @@ class Compass:
         return (d0 % 2) == (d1 % 2)
 
     @classmethod
+    def perpendicular(cls, d0, d1):
+        """
+        :param d0: a cardinal Compass direction
+        :param d1: a cardinal Compass direction
+        :return: boolean saying if these directions are perpendicular to one another
+        """
+        return not cls.sameDimension(d0, d1)
+
+    @classmethod
     def cardinalDirection(cls, p1, p2):
         """
         :param p1: either a Node object, or the coords (x1, y1) of a point
@@ -287,7 +296,7 @@ class LineSegment:
         self.p1 = p1
         x0, y0 = p0
         x1, y1 = p1
-        assert(x0 == x1 or y0 == y1)
+        #assert(x0 == x1 or y0 == y1)
         self.direc = Compass.cardinalDirection(p0, p1)
         self.varDim = Compass.variableDimension[self.direc]
         self.constDim = Compass.constantDimension[self.direc]
@@ -327,7 +336,8 @@ class LineSegment:
         return self.wl <= w and w <= self.wh
 
     def openIntervalIncludesCoord(self, w):
-        return self.wl < w and w < self.wh
+        eps = 0.0001
+        return self.wh - w > eps and w - self.wl > eps
 
     def closedIntervalIntersects(self, I):
         "Use this method if BOTH intervals are closed."
@@ -369,3 +379,25 @@ class LineSegment:
         z0 = self.z
         return -1 if z < z0 else (1 if z > z0 else 0)
 
+
+def getSideOfBox(box, side):
+    """
+    :param box: (bounding) box in the form (x, X, y, Y) giving extreme coords
+    :param side: cardinal Compass direction indicating one of the four sides of the box
+    :return: LineSegment representing the desired side of the box
+    """
+    x, X, y, Y = box
+    if side == Compass.EAST:
+        p0 = (X, y)
+        p1 = (X, Y)
+    elif side == Compass.SOUTH:
+        p0 = (x, Y)
+        p1 = (X, Y)
+    elif side == Compass.WEST:
+        p0 = (x, y)
+        p1 = (x, Y)
+    else:
+        assert side == Compass.NORTH
+        p0 = (x, y)
+        p1 = (X, y)
+    return LineSegment(p0, p1)

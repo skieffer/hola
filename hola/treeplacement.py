@@ -187,7 +187,7 @@ def chooseBestPlacement(tps, iel, logger, config,
         # potential placement, and choose the cheapest one.
         for tp in tps:
             if config.ESTIMATE_TREE_PLACEMENT_COSTS:
-                tp.estimateCost(iel, logger)
+                tp.estimateCost(iel, logger, use_old_heuristic=config.USE_OLD_COST_ESTIMATE_HEURISTIC)
             else:
                 tp.evaluateCost(iel)
         bestPlacement = min(tps, key=lambda tp: tp.cost)

@@ -381,6 +381,24 @@ class SepCo:
         else:
             self.gap = gap
 
+    def getDirectionRelativeToNode(self, node):
+        """
+        :param node: a Node, being one of the two constrained by this SepCo
+        :return: a cardinal Compass direction, being the constrained direction from
+                 the named Node toward the other
+        """
+        if node.ID == self.left.ID:
+            if self.dim == adg.XDIM:
+                return Compass.EAST
+            else:
+                return Compass.SOUTH
+        else:
+            assert node.ID == self.right.ID
+            if self.dim == adg.XDIM:
+                return Compass.WEST
+            else:
+                return Compass.NORTH
+
     def rotateCW(self, n):
         """
         :param n: an integer in the set {1, 2, 3}
@@ -592,6 +610,12 @@ class ProjSeq:
             for c in pcs:
                 s += '    %s\n' % repr(c)
         return s
+
+    def getAllConstraints(self):
+        return self.finalSets[adg.XDIM] + self.finalSets[adg.YDIM]
+
+    def getAllConstraintsInDimension(self, dim):
+        return self.finalSets[dim]
 
     def addConstraintSet(self, pcs, dim):
         """

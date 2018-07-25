@@ -183,6 +183,12 @@ class HolaConfig:
         """
         self.ESTIMATE_TREE_PLACEMENT_COSTS = False
         """
+        Legacy option. Heuristic for estimating face expansion costs was discovered
+        to be faulty, and was updated 25 Jul 2018. Set this option to true if you
+        want the old behaviour.
+        """
+        self.USE_OLD_COST_ESTIMATE_HEURISTIC = False
+        """
         We can also speed up tree placement by using an estimate of the stress
         costs, in order to choose the primary expansion dimension.
         """

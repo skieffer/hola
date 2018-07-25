@@ -80,11 +80,17 @@ class WaterDivide:
         # ...then extend with the goals in the complementary dimension.
         self.goals.extend(self.computeGoals(1 - primaryDim, iel))
 
-    def estimateCost(self):
-        xEst, yEst = self.estimateCostByDimension()
+    def estimateCost(self, use_old_heuristic=False):
+        xEst, yEst = self.estimateCostByDimension(use_old_heuristic=use_old_heuristic)
         return xEst + yEst
 
-    def estimateCostByDimension(self):
+    def estimateCostByDimension(self, use_old_heuristic=False):
+        if use_old_heuristic:
+            return self.estimateCostByDimension_old_method()
+        else:
+            return self.estimateCostByDimension_new_method()
+
+    def estimateCostByDimension_old_method(self):
         # Compute the existing space in each dimension at Level 0.
         # First partition the goals by the dimension they're working in.
         xGoals, yGoals = [], []
@@ -116,6 +122,56 @@ class WaterDivide:
         if h > yLev0:
             yEst += (h/float(yLev0) - 1)**2
         return (xEst, yEst)
+
+    def estimateCostByDimension_new_method(self):
+        cost_by_direc = self.estimateCostByDirection()
+        xEst = cost_by_direc[Compass.WEST] + cost_by_direc[Compass.EAST]
+        yEst = cost_by_direc[Compass.NORTH] + cost_by_direc[Compass.SOUTH]
+        return (xEst, yEst)
+
+    def estimateCostByDirection(self):
+        # Prepare the return value.
+        costs = {
+            Compass.EAST: 0, Compass.SOUTH: 0, Compass.WEST: 0, Compass.NORTH: 0
+        }
+        # First we consider collateral expansion constraints, if any.
+        PSes = self.tp.face.getCollateralProjSeqs(self.tp, self.iel)
+        if len(PSes) != 1:
+            raise Exception('Did not get unique collateral projseq.')
+        ps0 = PSes[0]
+        # For each direction in which these constraints act (relative to
+        # the root node of our TreePlacement), we want to know the maximum
+        # amount of violation in that direction. We set this as the cost in
+        # that direction.
+        collateral_direcs = set()  # Want to keep track of direcs addressed by collat. expansion
+        root = self.tp.node
+        C = ps0.getAllConstraints()
+        for c in C:
+            d = c.getDirectionRelativeToNode(root)
+            collateral_direcs.add(d)
+            v = c.violation()
+            costs[d] = max(costs[d], v)
+        # Now we also want to consider any of our goal segments that are in
+        # a direction other than one already addressed by collateral expansion
+        # (if any). The idea is that, as an estimate, we will guess that colatteral
+        # expansion will already buy enough room, in any direction in which it acts.
+        for g in self.goals:
+            d = g.direc
+            if d not in collateral_direcs:
+                # In such a case we base our estimate on a comparison of the goal segment
+                # against the available space (i.e. the "contained segment").
+                # However, since the collateral expansion has only been /described/ (by the
+                # necessary constraints), and not actually /performed/, we need to ignore
+                # collateral tree boxes. This is because those tree boxes might currently
+                # obstruct the contained segment, giving a misrepresentation of the space
+                # that would likely become available were the collateral expansion
+                # actually to be performed. Therefore we set the appropriate kwarg in
+                # this function call:
+                cs = g.computeContainedSegment(ignoreCollateralTreeBoxes=True)
+                sh = cs.measureShortage()
+                costs[d] = sh
+        # Done.
+        return costs
 
     def buildProjSeqs(self, ps0, estimate=False):
         """
@@ -416,6 +472,63 @@ class WaterGoal:
         # Form the WaterLevel objects and return them.
         return [WaterLevel(i, p0, g, p1, self, logger) for i, g in enumerate(goalPts)]
 
+    def computeContainedSegment(self, ignoreCollateralTreeBoxes=False):
+        """
+        We compute the "contained segment", which is the local goal segment for Level 0.
+
+        :param ignoreCollateralTreeBoxes: This is useful when we are interested in
+                                          computing estimates of expansion costs.
+                                          At such times, we want to guess how long the
+                                          contained segment might be once any collateral
+                                          tree boxes have been moved away (but without
+                                          actually doing the moving).
+        :return: nothing
+        """
+        facing_direc = Compass.flip(self.direc)
+        cl, op = self.tp.face.findBoundaryIntervalsFacingOneDirection(
+            facing_direc,
+            ignoreCollateralTreeBoxesForPlacement = self.tp if ignoreCollateralTreeBoxes else None
+        )
+        # Let:
+        p0, p1 = self.computeGoalSegment()
+        # Get the constant coord and extreme coords
+        x0, y0 = p0
+        x1, y1 = p1
+        if self.direc in Compass.vertical:
+            z, w0, w1 = x0, y0, y1
+        else:
+            z, w0, w1 = y0, x0, x1
+        # Build list of boundary segments that contain the goal segment's constant coord.
+        segs = filter(lambda ls: ls.closedIntervalIncludesCoord(z), cl)
+        segs.extend(filter(lambda ls: ls.openIntervalIncludesCoord(z), op))
+        # Now suppose p2 is the point on the line segment (p0, p1) farthest from p0 but
+        # still inside the face. Then, for some w2 between w0 and w1, we have either p2 = (z, w2)
+        # (for vertical goal segs) or p2 = (w2, z) (for horizontal goal segs).
+        # Our goal now is to compute w2.
+        # We initialize w2 to equal w1.
+        w2 = w1
+        d2 = abs(w2 - w0)
+        e1 = w1 - w0
+        # Then we look through the boundary segments and consider each one's constant coord wb.
+        # If wb is on the same side of w0 as w1 is, and if wb is closer to w0 than w2 is, this
+        # represents the nearest crossing found so far. So we set w2 = wb.
+        for seg in segs:
+            wb = seg.constCoord()
+            eb = wb - w0
+            if eb * e1 <= 0:
+                # eb * e1 == 0 means eb == 0, i.e. we're considering a boundary segment that
+                # actually crosses through the base point. We don't want to consider those.
+                # eb * e1 < 0 means we're on the wrong side of the base point.
+                continue
+            db = abs(eb)
+            if db < d2:
+                w2 = wb
+                d2 = db
+        # Having considered all possible crossing segments, we have found the contained segment.
+        localGoalPt = (z, w2) if self.direc in Compass.vertical else (w2, z)
+        cs = ContainedSegment(p0, localGoalPt, p1, self)
+        return cs
+
 
 class UnusableWaterPath(Exception):
 
@@ -714,6 +827,105 @@ class WaterLevel:
             n0 = n1
         assert(wp.positive)
         return wp
+
+class ContainedSegment:
+    """
+    Represents the relevant data for the portion of the goal segment contained
+    within the face. Manages expansion of the face.
+    """
+
+    def __init__(self, basept, localGoalPt, globalGoalPt, wg):
+        # coords (x, y) at beginning of goal segment:
+        self.basept = basept
+        # coords (x, y) at end of goal segment for routing:
+        self.localGoalPt = localGoalPt
+        # coords (x, y) at end of segment representing space needed by treebox:
+        self.globalGoalPt = globalGoalPt
+        self.formSegments()
+        # the owning WaterGoal object:
+        self.wg = wg
+        # ideal edge length for the graph:
+        self.iel = wg.iel
+        # the TreePlacement object:
+        self.tp = wg.tp
+        # the dimension in which the generated sepcos are to operate:
+        self.dim = wg.dim
+
+    def formSegments(self):
+        # segment representing space to be spanned by the route:
+        self.localGoalSeg = LineSegment(self.basept, self.localGoalPt)
+        # segment representing space needed by treebox:
+        self.globalGoalSeg = LineSegment(self.basept, self.globalGoalPt)
+
+    def getLength(self):
+        return self.localGoalSeg.length
+
+    def measureShortage(self):
+        """
+        :return: float, telling the "shortage", i.e. the extent to which the
+                 global goal seg exceeds the local in length. Min 0.
+        """
+        return max(0, self.globalGoalSeg.length - self.localGoalSeg.length)
+
+    def makeRoomForTreeNode(self, ps0):
+        """
+        :param ps0: an initial ProjSeq
+        :return: nothing
+
+        We attempt to extend the given ProjSeq so as to make room in the Face for
+        the desired TreePlacement. If any of the projections is infeasible then
+        we raise an UnusableWaterPath exception.
+        """
+        pcs = []
+        # Get the root node of the TreePlacement
+        root = self.tp.node
+        # Sides
+        # We can only work with obstacles that lie opposite the /local/ goal seg.
+        sides = self.tp.face.getAllSidesOppositeSegment(self.localGoalSeg, openInterval=True)
+        for side in sides:
+            # If the root node lies on the Side, need no constraints.
+            if side.containsNode(root): continue
+            pt = side.getFirstPtOppositeSegment(self.localGoalSeg)
+            sign = self.localGoalSeg.ptOnWhichSide(pt)
+            assert(sign in [-1, 1])
+            # We need the half-width of the Side opposite the longer of the two segments,
+            # which is always the global goal seg.
+            sideHW = side.halfwidthOppositeSegment(1 - sign, self.globalGoalSeg)
+            someNode = side.firstNode()  # just need any Node on the Side
+            left, right = (someNode, root) if sign == -1 else (root, someNode)
+            w, h, u, v = self.tp.treeBoxWithRootVector(iel=self.iel)
+            if self.globalGoalSeg.direc in Compass.vertical:
+                gap = sideHW + w/2.0 + sign*u
+            else:
+                gap = sideHW + h/2.0 + sign*v
+            gap = max(gap, 0)
+            sepco = SepCo(self.dim, left, right, gap)
+            pcs.append(sepco)
+        # Treenodes
+        alltps = self.tp.face.getAllTreePlacements()
+        for tp1 in alltps:
+            # Check whether the /unpadded/ treenode lies opposite the segment:
+            pt = tp1.somePointOppositeSegment(self.localGoalSeg, iel=0, openInterval=True)
+            if pt is not None:
+                sign = self.localGoalSeg.ptOnWhichSide(pt)
+                assert(sign in [-1, 1])
+                # For computing the gap for the sepco, use the actual box node, which
+                # /does/ include padding:
+                tn = tp1.boxNode
+                left, right = (tn, root) if sign == -1 else (root, tn)
+                # And use the /padded/ version of the treenode that is to be added:
+                w, h, u, v = self.tp.treeBoxWithRootVector(iel=self.iel)
+                if self.globalGoalSeg.direc in Compass.vertical:
+                    gap = tn.w/2.0 + w/2.0 + sign*u
+                else:
+                    gap = tn.h/2.0 + h/2.0 + sign*v
+                gap = max(gap, 0)
+                sepco = SepCo(self.dim, left, right, gap)
+                pcs.append(sepco)
+        ps0.addConstraintSet(pcs, self.dim)
+        feasible = self.tp.face.applyPS(ps0, self.iel)
+        if not feasible:
+            raise UnusableWaterPath(self, lineNo=inspect.getframeinfo(inspect.currentframe()).lineno)
 
 
 class WaterPath:

@@ -816,11 +816,11 @@ class TreePlacement:
             self.evaluateExpansionOptions(iel)
         return self.cost
 
-    def estimateCost(self, iel, logger):
+    def estimateCost(self, iel, logger, use_old_heuristic=False):
         # For this purpose the primary dimension does not matter, so
         # just pass XDIM.
         wd = WaterDivide(self, XDIM, iel, logger)
-        self.cost = wd.estimateCost()
+        self.cost = wd.estimateCost(use_old_heuristic=use_old_heuristic)
         return self.cost
 
     def insertTreeNode(self, iel):
@@ -853,6 +853,9 @@ class Side:
         # a list in which to store TreePlacement objects when trees are placed on
         # this Side:
         self.treePlacements = []
+
+    def getSetOfNodeIds(self):
+        return set([u.ID for u in self.nodeseq])
 
     def getForwardDirec(self):
         return self.forward
@@ -1542,6 +1545,66 @@ class Face:
             # face should have at least one bend.
             assert False
 
+    def findBoundaryIntervalsFacingOneDirection(self, facing_direc, ignoreCollateralTreeBoxesForPlacement=None):
+        """
+        :param facing_direc: a cardinal compass direction
+        :param ignoreCollateralTreeBoxesForPlacement: a TreePlacement object, or None.
+                                                     See WaterGoal.computeContainedSegment for use.
+
+        :return: pair (cl, op) of lists of ortho.LineSegment objects, representing closed and open
+                 intervals (resp.) in the interior boundary of this Face, but only those facing the
+                 named direction direc.
+
+                 For example, if direc is South, then cl will be a list of LineSegments representing
+                 every horizontal Edge in the Face, while op will be a list of LineSegments representing
+                 the southern boundary of (a) every Node in the Face, and (b) every Tree box in the Face.
+        """
+        cl, op = [], []
+        segs = []
+        # Since a node may occur twice in the traversal of a face, we keep a list
+        # of nodes visited.
+        visitedIDs = set()
+        # Are we going to be ignoring any tree boxes?
+        nodesForWhichTreeBoxesShouldBeIgnored = set()
+        if ignoreCollateralTreeBoxesForPlacement is not None:
+            tp = ignoreCollateralTreeBoxesForPlacement
+            sides = tp.face.getRelevantSidesForPlacement(tp)
+            for s in sides:
+                nodesForWhichTreeBoxesShouldBeIgnored.update(s.getSetOfNodeIds())
+        # Begin
+        node_pairs = zip(self.nodeseq, self.nodeseq[1:]+self.nodeseq[:1])
+        for u, v in node_pairs:
+            # Consider edge from u to v.
+            outdir = self.direc(u, v)
+            # If it's perpendicular to the facing direction...
+            if Compass.perpendicular(outdir, facing_direc):
+                # ...then record a closed interval for it.
+                p0, p1 = u.getBdryCompassPt(outdir), v.getBdryCompassPt(Compass.flip(outdir))
+                cl.append(LineSegment(p0, p1))
+            # Has node u been visited yet?
+            if u.ID not in visitedIDs:
+                # Record open interval on facing side of node box.
+                box = u.boundingBoxxXyY()
+                op.append(getSideOfBox(box, facing_direc))
+                # If a tree has been placed here, record open interval for facing side of tree box.
+                # (unless we're supposed to ignore this tree box)
+                if u.ID in self.nodeIDToTreePlacement and u.ID not in nodesForWhichTreeBoxesShouldBeIgnored:
+                    tp = self.nodeIDToTreePlacement[u.ID]
+                    # We use the /unpadded/ treenodes when considering where the boundary lies:
+                    padding = 0
+                    w, h, dx, dy = tp.treeBoxWithRootVector(iel=padding)
+                    # Create the treenode.
+                    treenode = Node()
+                    treenode.w, treenode.h = w, h
+                    treenode.x, treenode.y = u.x + dx, u.y + dy
+                    # Get box
+                    box = treenode.boundingBoxxXyY()
+                    op.append(getSideOfBox(box, facing_direc))
+                # Record node u as visited.
+                visitedIDs.add(u.ID)
+        # Return the two lists of intervals.
+        return (cl, op)
+
     def computeBoundarySegments(self, iel):
         segs = []
         # Since a node may occur twice in the traversal of a face, we keep a list
@@ -1665,7 +1728,7 @@ class Face:
         projseqs = []
         if self.config.HEURISTIC_CHOICE_FOR_PRIMARY_EXPANSION_DIMENSION:
             wd = WaterDivide(tp, XDIM, iel, logger)
-            xEst, yEst = wd.estimateCostByDimension()
+            xEst, yEst = wd.estimateCostByDimension(use_old_heuristic=self.config.USE_OLD_COST_ESTIMATE_HEURISTIC)
             if self.config.HCPED_COSTLIER_DIMENSION_FIRST:
                 # We work in the coslier dimension first, hoping that the bigger
                 # change that it makes will already handle the other dimension.
@@ -1690,50 +1753,6 @@ class Face:
         self.graph.dropNodePoses()
         # Restore node positions and return.
         self.graph.popNodePoses()
-        return projseqs
-
-    def estimateExpansionOptions(self, tp, iel):
-        """
-        Like the evaluateExpansionOptions method, but only estimates costs,
-        instead of carrying out all projections and backtracking.
-        :param tp: a TreePlacement object
-        :param iel: ideal edge length for the graph
-        :return: list of ProjSeq objects, with stress costs
-        """
-        logger = self.logger
-        # Start by removing any overlaps with collateral treenodes.
-        ps0 = self.doCollateralExpansion(tp, iel, testFeasibility=False)
-        # Now consider the options for removing remaining overlaps.
-        projseqs = []
-        if self.config.HEURISTIC_CHOICE_FOR_PRIMARY_EXPANSION_DIMENSION:
-            wd = WaterDivide(tp, XDIM, iel, logger)
-            xEst, yEst = wd.estimateCostByDimension()
-            if self.config.HCPED_COSTLIER_DIMENSION_FIRST:
-                # We work in the coslier dimension first, hoping that the bigger
-                # change that it makes will already handle the other dimension.
-                dims = [XDIM] if xEst > yEst else [YDIM]
-            else:
-                # We work in the cheaper dimension first, hoping it's enough and
-                # we get away with it.
-                dims = [XDIM] if xEst < yEst else [YDIM]
-        else:
-            # We'll try each dimension as the initial dimension.
-            dims = [XDIM, YDIM]
-        if logger.level >= LogLevel.TIMING:
-            suffix = logger.lastSuffix
-        for dim in dims:
-            if logger.level >= LogLevel.TIMING:
-                logger.lastSuffix = suffix
-            wd = WaterDivide(tp, dim, iel, logger)
-            projseqs.extend(wd.buildProjSeqs(ps0, estimate=True))
-        # Now we must discard any infeasible projseqs at the beginning of the list;
-        # i.e. at least the first one in the list must be feasible.
-        def firstIsFeasible():
-            self.graph.pushNodePoses()
-            okay = self.graph.applyProjSeq(projseqs[0], logger, opx=True, opy=True, solidEdgesX=True, solidEdgesY=True)
-            self.graph.popNodePoses()
-        while not firstIsFeasible():
-            projseqs = projseqs[1:]
         return projseqs
 
     def doCollateralExpansion(self, tp, iel, testFeasibility=True):
