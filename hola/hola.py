@@ -294,6 +294,10 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
 
     G_orig.registerMaxID()
     G = G_orig.copy()
+
+    # Clear all connector routes, just for better logging output.
+    G.clearAllRoutes()
+
     if logger.level >= LogLevel.NODE_IDS_AS_LABELS:
         G.setIDsAsLabels()
     if logger.level >= LogLevel.STAGE_GRAPHS:
@@ -380,6 +384,9 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
         trunk.nodeConf.extraGapY = avgdim
         trunk.shakeWithSolidEdges(iel)
         stopT(logger)
+        # Show result of chain config:
+        if logger.level >= LogLevel.STAGE_GRAPHS:
+            logger.writeGML("_05_chainConfig_CA", graph=trunk)
     else:
         startT('Chains_SB', logger)
         cc = trunk.getChainsAndCycles()
@@ -408,9 +415,9 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
             trunk.project(logger, adg.YDIM, op=False)
             trunk.shakeWithSolidEdges(iel)
         stopT(logger)
-    # Show result of chain config:
-    if logger.level >= LogLevel.STAGE_GRAPHS:
-        logger.writeGML("_05_chainConfig", graph=trunk)
+        # Show result of chain config:
+        if logger.level >= LogLevel.STAGE_GRAPHS:
+            logger.writeGML("_05_chainConfig_SB", graph=trunk)
 
     # Route connectors.
     startT('06_routing', logger)

@@ -56,6 +56,9 @@ def buildMenu():
 def main():
     sg = raw_input('Output intermediate stage graphs? (y/n) ')
     output_stage_graphs = (sg == 'y')
+    if output_stage_graphs:
+        fsg = raw_input('Output finer stage graphs? (y/n) ')
+        output_finer_stage_graphs = (fsg == 'y')
     menutext, menudict = buildMenu()
     while True:
         print menutext
@@ -75,7 +78,11 @@ def main():
             config.LOG_LEVEL_GENERAL = LogLevel.STAGE_GRAPHS
         else:
             config.LOG_LEVEL_GENERAL = LogLevel.TIMING
-        config.LOG_LEVEL_TREE_PLACEMENT = LogLevel.TIMING
+        if output_finer_stage_graphs:
+            config.LOG_LEVEL_TREE_PLACEMENT = LogLevel.FINER_STAGE_GRAPHS
+            config.LOG_LEVEL_GENERAL = LogLevel.FINER_STAGE_GRAPHS
+        else:
+            config.LOG_LEVEL_TREE_PLACEMENT = LogLevel.TIMING
         basic_tools.doHOLA(name, config=config)
         print '%' * 80
 
