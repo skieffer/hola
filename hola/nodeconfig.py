@@ -70,7 +70,6 @@ def nodewiseACA(G, L, ccs, logger, config):
     else:
         i += 1
     nodes = nodes[:i]
-
     # Create an ACA layout object.
     aca = adg.ACALayout3(rs, es, ccs, L, True)
     # Go through nodes one by one, in order, giving each one the best possible
@@ -167,7 +166,7 @@ def nodewiseACA(G, L, ccs, logger, config):
             mightNeedToShake = True
             if logger.level >= LogLevel.FINER_STAGE_GRAPHS:
                 G.moveNodesToRects(rs)
-                logger.writeGML("_03_NWACA_%03d_config"%numSteps, graph=G)
+                logger.writeGML("_03_NWACA_%03d_config_node_%d" % (numSteps, centre.ID), graph=G)
                 numSteps += 1
         elif not success and mightNeedToShake:
             # If we were not able to configure this node, it may be that relieving
