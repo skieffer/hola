@@ -359,7 +359,13 @@ def hola(G_orig, config=None, logger=None, projLogger=None):
 
     # Configure nodes in trunk:
     startT('NWACA', logger)
+
     ccs = adg.CompoundConstraintPtrs()
+    # FIXME
+    # Should be:
+    #   ccs = trunk.getExistingCCs()
+    # but this can run into errors if you set constraints on any tree nodes.
+
     aca, rs = nodeconfig.nodewiseACA(trunk, iel, ccs, logger, config)[:2]
     trunk.inferNodeConf()
     trunk.nodeConf.extraGapX = avgdim

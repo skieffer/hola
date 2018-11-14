@@ -644,6 +644,23 @@ class Graph:
         alg.moveToIntegers()
         self.moveNodesToRects(rs)
 
+    def getExistingCCs(self, ccs=None):
+        if ccs is None:
+            ccs = adg.CompoundConstraintPtrs()
+        rs, es, ix = self.writeRsEsIx()
+        ncs = self.nodeConf.buildCCS(ix=ix)
+        for nc in ncs:
+            ccs.push_back(nc)
+        for pc in self.extraPCs:
+            pcCCs = pc.buildCCs(rs=rs, ix=ix)
+            for cc in pcCCs:
+                ccs.push_back(cc)
+        for pch in self.PCHolders:
+            ccs2 = pch.getCCs(rs=rs, ix=ix)
+            for cc in ccs2:
+                ccs.push_back(cc)
+        return ccs
+
     def setupFDLayout(self, iel, op=False, ccs=None, pcs=[], topoAddon=None, logger=None,
                       useNeighbourStress=False):
         if logger is not None and logger.level >= LogLevel.TIMING:
