@@ -1,3 +1,14 @@
+_ATTENTION:_
+============
+
+_This repository is no longer the recommended way to use HOLA. The algorithm is
+now included in the [Adaptagrams][adaptagrams] C++ library._
+
+_There are no plans to update to Python3. If you wish to use HOLA via Python it
+is recommended that you use [SWIG][swig] in combination with [Adaptagrams][adaptagrams]._
+
+------------
+
 HOLA
 ====
 
